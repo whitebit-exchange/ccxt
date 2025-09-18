@@ -1258,8 +1258,6 @@ export default class whitebit extends Exchange {
         return this.filterByArrayTickers (result, 'symbol', symbols);
     }
 
-
-
     /**
      * @method
      * @name whitebit#fetchOrderBook
