@@ -80,6 +80,7 @@ export default class whitebit extends Exchange {
                 'fetchOHLCV': true,
                 'fetchOpenInterestHistory': false,
                 'fetchOpenOrders': true,
+                'fetchOrder': true,
                 'fetchOrderBook': true,
                 'fetchOrderTrades': true,
                 'fetchPosition': true,
@@ -341,7 +342,11 @@ export default class whitebit extends Exchange {
                         'untilDays': undefined,
                         'symbolRequired': false,
                     },
-                    'fetchOrder': undefined,
+                    'fetchOrder': {
+                        'checkActive': true,
+                        'checkExecuted': true,
+                        'symbolRequired': false,
+                    },
                     'fetchOpenOrders': {
                         'marginMode': false,
                         'limit': 100,
@@ -1062,6 +1067,152 @@ export default class whitebit extends Exchange {
 
     /**
      * @method
+     * @name whitebit#fetchOrder
+     * @description fetches information on an order by the id
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-unexecuted-orders
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-executed-orders
+     * @param {string} id order id
+     * @param {string} symbol unified symbol of the market the order was made in
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @param {boolean} [params.checkActive] whether to check active orders (default: true)
+     * @param {boolean} [params.checkExecuted] whether to check executed orders (default: true)
+     * @returns {object} an [order structure]{@link https://docs.ccxt.com/#/?id=order-structure}
+     */
+    async fetchOrder (id: string, symbol: Str = undefined, params = {}): Promise<Order> {
+        await this.loadMarkets ();
+        // Extract control parameters from params
+        const checkActive = this.safeBool (params, 'checkActive', true);
+        const checkExecuted = this.safeBool (params, 'checkExecuted', true);
+        // Try active orders first (if enabled)
+        if (checkActive) {
+            try {
+                return await this.fetchActiveOrder (id, symbol, params);
+            } catch (error) {
+                if (!(error instanceof OrderNotFound)) {
+                    throw error;
+                }
+            }
+        }
+        // Try executed orders (if enabled)
+        if (checkExecuted) {
+            try {
+                return await this.fetchExecutedOrder (id, symbol, params);
+            } catch (error) {
+                if (!(error instanceof OrderNotFound)) {
+                    throw error;
+                }
+            }
+        }
+        throw new OrderNotFound (this.id + ' fetchOrder() order not found: ' + id);
+    }
+
+
+    /**
+     * @method
+     * @name whitebit#fetchActiveOrder
+     * @description fetches information on an active (unexecuted) order by the id
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-unexecuted-orders
+     * @param {string} id order id
+     * @param {string} symbol unified symbol of the market the order was made in
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @returns {object} an [order structure]{@link https://docs.ccxt.com/#/?id=order-structure}
+     */
+    async fetchActiveOrder (id: string, symbol: Str = undefined, params = {}): Promise<Order> {
+        const request: Dict = {
+            'orderId': id,
+        };
+        let market = undefined;
+        if (symbol !== undefined) {
+            market = this.market (symbol);
+            request['market'] = market['id'];
+        }
+        const response = await this.v4PrivatePostOrders (this.extend (request, params));
+        //
+        //     {
+        //         "BTC_USDT": [
+        //             {
+        //                 "id": 160305483,
+        //                 "clientOrderId": "customId11",
+        //                 "time": 1594667731.724403,
+        //                 "side": "sell",
+        //                 "amount": "0.000076",
+        //                 "price": "9264.21",
+        //                 "status": "open"
+        //             },
+        //         ],
+        //     }
+        //
+        const marketIds = Object.keys (response);
+        for (let i = 0; i < marketIds.length; i++) {
+            const marketId = marketIds[i];
+            const marketNew = this.safeMarket (marketId, undefined, '_');
+            const orders = response[marketId];
+            for (let j = 0; j < orders.length; j++) {
+                const order = orders[j];
+                const orderId = this.safeString2 (order, 'orderId', 'id');
+                if (orderId === id) {
+                    return this.parseOrder (order, marketNew);
+                }
+            }
+        }
+        throw new OrderNotFound (this.id + ' fetchOrder() order not found: ' + id);
+    }
+
+    /**
+     * @method
+     * @name whitebit#fetchExecutedOrder
+     * @description fetches information on an executed order by the id
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-executed-orders
+     * @param {string} id order id
+     * @param {string} symbol unified symbol of the market the order was made in
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @returns {object} an [order structure]{@link https://docs.ccxt.com/#/?id=order-structure}
+     */
+    async fetchExecutedOrder (id: string, symbol: Str = undefined, params = {}): Promise<Order> {
+        const request: Dict = {
+            'orderId': id,
+        };
+        let market = undefined;
+        if (symbol !== undefined) {
+            market = this.market (symbol);
+            request['market'] = market['id'];
+        }
+        const response = await this.v4PrivatePostTradeAccountOrderHistory (this.extend (request, params));
+        //
+        //     {
+        //         "BTC_USDT": [
+        //             {
+        //                 "id": 160305483,
+        //                 "clientOrderId": "customId11",
+        //                 "time": 1594667731.724403,
+        //                 "side": "sell",
+        //                 "role": 2, // 1 = maker, 2 = taker
+        //                 "amount": "0.000076",
+        //                 "price": "9264.21",
+        //                 "deal": "0.70407996",
+        //                 "fee": "0.00070407996"
+        //             },
+        //         ],
+        //     }
+        //
+        const marketIds = Object.keys (response);
+        for (let i = 0; i < marketIds.length; i++) {
+            const marketId = marketIds[i];
+            const marketNew = this.safeMarket (marketId, undefined, '_');
+            const orders = response[marketId];
+            for (let j = 0; j < orders.length; j++) {
+                const order = orders[j];
+                const orderId = this.safeString2 (order, 'orderId', 'id');
+                if (orderId === id) {
+                    return this.parseOrder (order, marketNew);
+                }
+            }
+        }
+        throw new OrderNotFound (this.id + ' fetchOrder() order not found: ' + id);
+    }
+
+    /**
+     * @method
      * @name whitebit#fetchTickers
      * @description fetches price tickers for multiple markets, statistical information calculated over the past 24 hours for each market
      * @see https://docs.whitebit.com/public/http-v4/#market-activity
@@ -1107,6 +1258,8 @@ export default class whitebit extends Exchange {
         }
         return this.filterByArrayTickers (result, 'symbol', symbols);
     }
+
+
 
     /**
      * @method
