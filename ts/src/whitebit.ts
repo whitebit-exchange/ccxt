@@ -10,6 +10,8 @@ import type { TransferEntry, Balances, Bool, Currency, Int, Market, MarketType, 
 
 //  ---------------------------------------------------------------------------
 
+// Initial comment
+
 /**
  * @class whitebit
  * @augments Exchange
