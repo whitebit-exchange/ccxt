@@ -1106,7 +1106,6 @@ export default class whitebit extends Exchange {
         throw new OrderNotFound (this.id + ' fetchOrder() order not found: ' + id);
     }
 
-
     /**
      * @method
      * @name whitebit#fetchActiveOrder
