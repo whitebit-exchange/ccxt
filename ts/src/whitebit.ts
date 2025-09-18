@@ -2320,7 +2320,6 @@ export default class whitebit extends Exchange {
         return this.parseTransactions (response, currency, since, limit);
     }
 
-
     /**
      * @method
      * @name whitebit#fetchDepositAddress
