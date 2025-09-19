@@ -228,9 +228,8 @@ export default class whitebit extends Exchange {
                             'main-account/fee',
                             'main-account/smart/interest-payment-history',
                             'trade-account/balance',
-                            'trade-account/executed-history',
-                            'trade-account/order',
                             'trade-account/order/history',
+                            'trade-account/order',
                             'order/collateral/limit',
                             'order/collateral/market',
                             'order/collateral/stop-limit',
@@ -1072,7 +1071,7 @@ export default class whitebit extends Exchange {
      * @method
      * @name whitebit#fetchOrder
      * @description fetches information on an order by the id
-     * @see https://docs.whitebit.com/private/http-trade-v4/#query-unexecuted-orders
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-unexecutedactive-orders
      * @see https://docs.whitebit.com/private/http-trade-v4/#query-executed-orders
      * @param {string} id order id
      * @param {string} symbol unified symbol of the market the order was made in
@@ -1094,30 +1093,19 @@ export default class whitebit extends Exchange {
             market = this.market (symbol);
             request['market'] = market['id'];
         }
-        // Helper function to search for order in response
-        const searchOrderInResponse = (response: Dict): Order | undefined => {
-            const marketIds = Object.keys (response);
-            for (let i = 0; i < marketIds.length; i++) {
-                const marketId = marketIds[i];
-                const marketNew = this.safeMarket (marketId, undefined, '_');
-                const orders = response[marketId];
-                for (let j = 0; j < orders.length; j++) {
-                    const order = orders[j];
-                    const orderId = this.safeString2 (order, 'orderId', 'id');
-                    if (orderId === id) {
-                        return this.parseOrder (order, marketNew);
-                    }
-                }
-            }
-            return undefined;
-        };
         // Try active orders first (if enabled)
         if (checkActive) {
             try {
                 const response = await this.v4PrivatePostOrders (this.extend (request, params));
-                const order = searchOrderInResponse (response);
-                if (order) {
-                    return order;
+                // Search for order in active orders response (array format)
+                for (let i = 0; i < response.length; i++) {
+                    const order = response[i];
+                    const orderId = this.safeString (order, 'orderId');
+                    if (orderId === id) {
+                        const marketId = this.safeString (order, 'market');
+                        const marketNew = this.safeMarket (marketId, undefined, '_');
+                        return this.parseOrder (order, marketNew);
+                    }
                 }
             } catch (error) {
                 if (!(error instanceof OrderNotFound)) {
@@ -1129,9 +1117,19 @@ export default class whitebit extends Exchange {
         if (checkExecuted) {
             try {
                 const response = await this.v4PrivatePostTradeAccountOrderHistory (this.extend (request, params));
-                const order = searchOrderInResponse (response);
-                if (order) {
-                    return order;
+                // Search for order in executed orders response (object format)
+                const marketIds = Object.keys (response);
+                for (let i = 0; i < marketIds.length; i++) {
+                    const marketId = marketIds[i];
+                    const marketNew = this.safeMarket (marketId, undefined, '_');
+                    const orders = response[marketId];
+                    for (let j = 0; j < orders.length; j++) {
+                        const order = orders[j];
+                        const orderId = this.safeString (order, 'id');
+                        if (orderId === id) {
+                            return this.parseOrder (order, marketNew);
+                        }
+                    }
                 }
             } catch (error) {
                 if (!(error instanceof OrderNotFound)) {
