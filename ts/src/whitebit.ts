@@ -6,7 +6,7 @@ import { ExchangeNotAvailable, ExchangeError, DDoSProtection, BadSymbol, Invalid
 import { Precise } from './base/Precise.js';
 import { TICK_SIZE } from './base/functions/number.js';
 import { sha512 } from './static_dependencies/noble-hashes/sha512.js';
-import type { TransferEntry, Balances, Bool, Currency, Int, Market, MarketType, OHLCV, Order, OrderBook, OrderSide, OrderType, Str, Strings, Ticker, Tickers, Trade, Transaction, Num, Currencies, TradingFees, Dict, int, FundingRate, FundingRates, DepositAddress, Conversion, BorrowInterest, FundingHistory, Position, CrossBorrowRate, Account } from './base/types.js';
+import type { TransferEntry, Balances, Bool, Currency, Int, Market, MarketType, OHLCV, Order, OrderBook, OrderSide, OrderType, Str, Strings, Ticker, Tickers, Trade, Transaction, Num, Currencies, TradingFees, Dict, int, FundingRate, FundingRates, DepositAddress, Conversion, BorrowInterest, FundingHistory, Position, CrossBorrowRate, Account, LedgerEntry } from './base/types.js';
 
 //  ---------------------------------------------------------------------------
 
@@ -75,6 +75,7 @@ export default class whitebit extends Exchange {
                 'fetchIndexOHLCV': false,
                 'fetchIsolatedBorrowRate': false,
                 'fetchIsolatedBorrowRates': false,
+                'fetchLedger': true,
                 'fetchMarginMode': false,
                 'fetchMarkets': true,
                 'fetchMarkOHLCV': false,
@@ -1218,6 +1219,116 @@ export default class whitebit extends Exchange {
             };
         }
         return result;
+    }
+
+    /**
+     * @method
+     * @name whitebit#fetchLedger
+     * @description fetch the history of changes, actions done by the user or operations that altered balance of the user
+     * @see https://docs.whitebit.com/private/http-main-v4/#query-main-account-history
+     * @param {string} [code] unified currency code, default is undefined
+     * @param {int} [since] timestamp in ms of the earliest ledger entry, default is undefined
+     * @param {int} [limit] max number of ledger entries to retrieve, default is undefined
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @returns {object} a [ledger structure]{@link https://docs.ccxt.com/#/?id=ledger-structure}
+     */
+    async fetchLedger (code: Str = undefined, since: Int = undefined, limit: Int = undefined, params = {}): Promise<LedgerEntry[]> {
+        await this.loadMarkets ();
+        // Execute API calls in parallel for better performance
+        const [ transactionsResult, tradesResult ] = await Promise.allSettled ([
+            this.fetchTransactions (code, since, limit, params),
+            this.fetchMyTrades (undefined, since, limit, params),
+        ]);
+        const ledger = [];
+        // Process transactions (deposits/withdrawals)
+        if (transactionsResult.status === 'fulfilled') {
+            const transactions = transactionsResult.value;
+            for (let i = 0; i < transactions.length; i++) {
+                const transaction = transactions[i];
+                const direction = transaction['type'] === 'deposit' ? 'in' : 'out';
+                const amount = Math.abs (transaction['amount']);
+                ledger.push ({
+                    'id': transaction['id'],
+                    'direction': direction,
+                    'account': 'main',
+                    'referenceId': transaction['id'],
+                    'referenceAccount': undefined,
+                    'type': 'transaction',
+                    'currency': transaction['currency'],
+                    'amount': amount,
+                    'timestamp': transaction['timestamp'],
+                    'datetime': transaction['datetime'],
+                    'before': undefined,
+                    'after': undefined,
+                    'status': transaction['status'],
+                    'fee': {
+                        'cost': this.safeNumber (transaction['info'], 'fee'),
+                        'currency': transaction['currency'],
+                    },
+                    'info': transaction['info'],
+                });
+            }
+        } else {
+            // Log warning if transactions failed to fetch
+            this.log ('warn', 'Failed to fetch transactions for ledger:', transactionsResult.reason);
+        }
+        // Process trades
+        if (tradesResult.status === 'fulfilled') {
+            const trades = tradesResult.value;
+            for (let i = 0; i < trades.length; i++) {
+                const trade = trades[i];
+                const market = this.market (trade['symbol']);
+                const direction = trade['side'] === 'buy' ? 'in' : 'out';
+                // Add trade entry
+                ledger.push ({
+                    'id': trade['id'],
+                    'direction': direction,
+                    'account': 'trade',
+                    'referenceId': trade['id'],
+                    'referenceAccount': undefined,
+                    'type': 'trade',
+                    'currency': trade['side'] === 'buy' ? market['base'] : market['quote'],
+                    'amount': trade['amount'],
+                    'timestamp': trade['timestamp'],
+                    'datetime': trade['datetime'],
+                    'before': undefined,
+                    'after': undefined,
+                    'status': 'ok',
+                    'fee': trade['fee'],
+                    'info': trade['info'],
+                });
+                // Add fee entry if fee exists
+                if (trade['fee'] && trade['fee']['cost'] > 0) {
+                    ledger.push ({
+                        'id': trade['id'] + '-fee',
+                        'direction': 'out',
+                        'account': 'trade',
+                        'referenceId': trade['id'],
+                        'referenceAccount': undefined,
+                        'type': 'fee',
+                        'currency': trade['fee']['currency'],
+                        'amount': trade['fee']['cost'],
+                        'timestamp': trade['timestamp'],
+                        'datetime': trade['datetime'],
+                        'before': undefined,
+                        'after': undefined,
+                        'status': 'ok',
+                        'fee': undefined,
+                        'info': trade['info'],
+                    });
+                }
+            }
+        } else {
+            // Log warning if trades failed to fetch
+            this.log ('warn', 'Failed to fetch trades for ledger:', tradesResult.reason);
+        }
+        // Return early if no ledger entries
+        if (ledger.length === 0) {
+            return [];
+        }
+        // Sort by timestamp (newest first)
+        const sortedLedger = this.sortBy (ledger, 'timestamp', true);
+        return this.filterByCurrencySinceLimit (sortedLedger, code, since, limit);
     }
 
     /**
