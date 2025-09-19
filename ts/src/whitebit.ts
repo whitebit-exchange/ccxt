@@ -38,7 +38,6 @@ export default class whitebit extends Exchange {
                 'cancelOrders': false,
                 'createConvertTrade': true,
                 'createDepositAddress': true,
-                'fetchAccounts': true,
                 'createMarketBuyOrderWithCost': true,
                 'createMarketOrderWithCost': false,
                 'createMarketSellOrderWithCost': false,
@@ -49,6 +48,7 @@ export default class whitebit extends Exchange {
                 'createStopOrder': true,
                 'createTriggerOrder': true,
                 'editOrder': false,
+                'fetchAccounts': true,
                 'fetchBalance': true,
                 'fetchBorrowRateHistories': false,
                 'fetchBorrowRateHistory': false,
@@ -2683,7 +2683,7 @@ export default class whitebit extends Exchange {
                     accounts.push ({
                         'id': accountId,
                         'type': 'subaccount',
-                        'name': accountName || `SubAccount ${accountId}`,
+                        'name': accountName || 'SubAccount ' + accountId,
                         'code': undefined,
                         'info': subAccount,
                     });
