@@ -347,6 +347,8 @@ export default class whitebit extends Exchange {
                         'checkExecuted': true,
                         'symbolRequired': false,
                         'marginMode': false,
+                        'trigger': false,
+                        'trailing': false,
                     },
                     'fetchOpenOrders': {
                         'marginMode': false,
