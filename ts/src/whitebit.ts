@@ -228,6 +228,7 @@ export default class whitebit extends Exchange {
                             'main-account/fee',
                             'main-account/smart/interest-payment-history',
                             'trade-account/balance',
+                            'trade-account/executed-history',
                             'trade-account/order/history',
                             'trade-account/order',
                             'order/collateral/limit',
