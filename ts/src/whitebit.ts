@@ -1030,13 +1030,10 @@ export default class whitebit extends Exchange {
                 const priceLimits = this.safeDict (limits, 'price');
                 const costLimits = this.safeDict (limits, 'cost');
                 // Validate that all required limits exist and are valid numbers
-                if (amountLimits && priceLimits && costLimits &&
-                    this.safeNumber (amountLimits, 'min') !== undefined &&
-                    this.safeNumber (amountLimits, 'max') !== undefined &&
-                    this.safeNumber (priceLimits, 'min') !== undefined &&
-                    this.safeNumber (priceLimits, 'max') !== undefined &&
-                    this.safeNumber (costLimits, 'min') !== undefined &&
-                    this.safeNumber (costLimits, 'max') !== undefined) {
+                const hasAmountLimits = amountLimits && this.safeNumber (amountLimits, 'min') !== undefined && this.safeNumber (amountLimits, 'max') !== undefined;
+                const hasPriceLimits = priceLimits && this.safeNumber (priceLimits, 'min') !== undefined && this.safeNumber (priceLimits, 'max') !== undefined;
+                const hasCostLimits = costLimits && this.safeNumber (costLimits, 'min') !== undefined && this.safeNumber (costLimits, 'max') !== undefined;
+                if (hasAmountLimits && hasPriceLimits && hasCostLimits) {
                     result[symbol] = {
                         'info': market,
                         'limits': {
