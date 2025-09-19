@@ -83,6 +83,7 @@ export default class whitebit extends Exchange {
                 'fetchOrder': true,
                 'fetchOrderBook': true,
                 'fetchOrderTrades': true,
+                'fetchOrders': true,
                 'fetchPosition': true,
                 'fetchPositionHistory': true,
                 'fetchPositionMode': false,
@@ -358,7 +359,10 @@ export default class whitebit extends Exchange {
                         'trailing': false,
                         'symbolRequired': false,
                     },
-                    'fetchOrders': undefined, // todo
+                    'fetchOrders': {
+                        'limit': 100,
+                        'symbolRequired': false,
+                    },
                     'fetchClosedOrders': {
                         'marginMode': false,
                         'limit': 100,
@@ -1817,6 +1821,35 @@ export default class whitebit extends Exchange {
         // []
         //
         return this.parseOrders (response, market);
+    }
+
+    /**
+     * @method
+     * @name whitebit#fetchOrders
+     * @description fetches information on multiple orders made by the user (combines open and closed orders)
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-unexecutedactive-orders
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-executed-orders
+     * @param {string} symbol unified market symbol of the market orders were made in
+     * @param {int} [since] the earliest time in ms to fetch orders for
+     * @param {int} [limit] the maximum number of order structures to retrieve
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @returns {Order[]} a list of [order structures]{@link https://docs.ccxt.com/#/?id=order-structure}
+     */
+    async fetchOrders (symbol: Str = undefined, since: Int = undefined, limit: Int = undefined, params = {}): Promise<Order[]> {
+        await this.loadMarkets ();
+        // Fetch both open and closed orders in parallel
+        const [ openOrders, closedOrders ] = await Promise.all ([
+            this.fetchOpenOrders (symbol, since, limit, params),
+            this.fetchClosedOrders (symbol, since, limit, params),
+        ]);
+        const allOrders = this.arrayConcat (openOrders, closedOrders);
+        // Sort by timestamp (most recent first)
+        const sortedOrders = this.sortBy (allOrders, 'timestamp', true);
+        // Apply limit if specified (since and symbol filtering already handled by individual methods)
+        if (limit !== undefined && sortedOrders.length > limit) {
+            return sortedOrders.slice (0, limit);
+        }
+        return sortedOrders;
     }
 
     /**
