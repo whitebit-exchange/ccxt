@@ -362,6 +362,10 @@ export default class whitebit extends Exchange {
                     'fetchOrders': {
                         'marginMode': false,
                         'limit': 100,
+                        'daysBack': undefined,
+                        'untilDays': undefined,
+                        'trigger': false,
+                        'trailing': false,
                         'symbolRequired': false,
                     },
                     'fetchClosedOrders': {
