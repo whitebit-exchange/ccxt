@@ -83,6 +83,7 @@ export default class whitebit extends Exchange {
                 'fetchOrder': true,
                 'fetchOrderBook': true,
                 'fetchOrderTrades': true,
+                'fetchOrders': true,
                 'fetchPosition': true,
                 'fetchPositionHistory': true,
                 'fetchPositionMode': false,
@@ -96,6 +97,7 @@ export default class whitebit extends Exchange {
                 'fetchTradingFee': false,
                 'fetchTradingFees': true,
                 'fetchTransactionFees': true,
+                'fetchWithdrawals': true,
                 'repayCrossMargin': false,
                 'repayIsolatedMargin': false,
                 'setLeverage': true,
@@ -357,7 +359,15 @@ export default class whitebit extends Exchange {
                         'trailing': false,
                         'symbolRequired': false,
                     },
-                    'fetchOrders': undefined, // todo
+                    'fetchOrders': {
+                        'marginMode': false,
+                        'limit': 100,
+                        'daysBack': undefined,
+                        'untilDays': undefined,
+                        'trigger': false,
+                        'trailing': false,
+                        'symbolRequired': false,
+                    },
                     'fetchClosedOrders': {
                         'marginMode': false,
                         'limit': 100,
@@ -370,6 +380,13 @@ export default class whitebit extends Exchange {
                     },
                     'fetchOHLCV': {
                         'limit': 1440,
+                    },
+                    'fetchWithdrawals': {
+                        'marginMode': false,
+                        'limit': 100,
+                        'daysBack': undefined,
+                        'untilDays': undefined,
+                        'symbolRequired': false,
                     },
                 },
                 'spot': {
@@ -1820,6 +1837,35 @@ export default class whitebit extends Exchange {
 
     /**
      * @method
+     * @name whitebit#fetchOrders
+     * @description fetches information on multiple orders made by the user (combines open and closed orders)
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-unexecutedactive-orders
+     * @see https://docs.whitebit.com/private/http-trade-v4/#query-executed-orders
+     * @param {string} symbol unified market symbol of the market orders were made in
+     * @param {int} [since] the earliest time in ms to fetch orders for
+     * @param {int} [limit] the maximum number of order structures to retrieve
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @returns {Order[]} a list of [order structures]{@link https://docs.ccxt.com/#/?id=order-structure}
+     */
+    async fetchOrders (symbol: Str = undefined, since: Int = undefined, limit: Int = undefined, params = {}): Promise<Order[]> {
+        await this.loadMarkets ();
+        // Fetch both open and closed orders in parallel
+        const [ openOrders, closedOrders ] = await Promise.all ([
+            this.fetchOpenOrders (symbol, since, limit, params),
+            this.fetchClosedOrders (symbol, since, limit, params),
+        ]);
+        const allOrders = this.arrayConcat (openOrders, closedOrders);
+        // Sort by timestamp (most recent first)
+        const sortedOrders = this.sortBy (allOrders, 'timestamp', true);
+        // Apply limit if specified (since and symbol filtering already handled by individual methods)
+        if (limit !== undefined && sortedOrders.length > limit) {
+            return sortedOrders.slice (0, limit);
+        }
+        return sortedOrders;
+    }
+
+    /**
+     * @method
      * @name whitebit#cancelAllOrdersAfter
      * @description dead man's switch, cancel all orders after the given timeout
      * @see https://docs.whitebit.com/private/http-trade-v4/#sync-kill-switch-timer
@@ -2194,6 +2240,59 @@ export default class whitebit extends Exchange {
         //
         const data = this.safeList (response, 'records', []);
         return this.parseTrades (data, market);
+    }
+
+    /**
+     * @method
+     * @name whitebit#fetchWithdrawals
+     * @description fetch all withdrawals made from an account
+     * @see https://docs.whitebit.com/private/http-main-v4/#get-depositwithdraw-history
+     * @param {string} code unified currency code
+     * @param {int} [since] the earliest time in ms to fetch withdrawals for
+     * @param {int} [limit] the maximum number of withdrawals structures to retrieve
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @param {string} [params.transactionMethod] transaction method (1=deposit, 2=withdrawal) - automatically set to '2' for withdrawals
+     * @returns {object[]} a list of [transaction structures]{@link https://docs.ccxt.com/#/?id=transaction-structure}
+     */
+    async fetchWithdrawals (code: Str = undefined, since: Int = undefined, limit: Int = undefined, params = {}): Promise<Transaction[]> {
+        await this.loadMarkets ();
+        let currency = undefined;
+        const request: Dict = {};
+        if (code !== undefined) {
+            currency = this.currency (code);
+            request['ticker'] = currency['id'];
+        }
+        if (since !== undefined) {
+            request['startDate'] = this.parseToInt (since / 1000);
+        }
+        if (limit === undefined || limit > 100) {
+            limit = 100;
+        }
+        if (limit !== undefined) {
+            request['limit'] = limit;
+        }
+        // Use transactionMethod parameter to filter withdrawals server-side (method = 2)
+        request['transactionMethod'] = '2';
+        const response = await this.v4PrivatePostMainAccountHistory (this.extend (request, params));
+        //
+        //     [
+        //         {
+        //             "id": 123456789,                    // Transaction ID
+        //             "method": "2",                      // Method: 1=deposit, 2=withdrawal (filtered server-side)
+        //             "ticker": "BTC",                    // Currency ticker
+        //             "amount": "0.001",                  // Transaction amount
+        //             "address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", // Withdrawal address
+        //             "memo": "",                         // Memo/tag (if required)
+        //             "network": "BTC",                   // Network name
+        //             "fee": "0.0005",                    // Transaction fee
+        //             "status": "1",                      // Status: 0=pending, 1=completed, 2=failed
+        //             "timestamp": 1641051917,            // Transaction timestamp
+        //             "txid": "abc123def456..."           // Transaction hash
+        //         },
+        //         { ... }                                 // More withdrawal transactions
+        //     ]
+        //
+        return this.parseTransactions (response, currency, since, limit);
     }
 
     /**
