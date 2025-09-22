@@ -101,7 +101,6 @@ export default class whitebit extends Exchange {
                 'fetchTransactionFees': true,
                 'fetchTransactions': true,
                 'fetchWithdrawals': true,
-                'fetchTransactions': true,
                 'repayCrossMargin': false,
                 'repayIsolatedMargin': false,
                 'setLeverage': true,
