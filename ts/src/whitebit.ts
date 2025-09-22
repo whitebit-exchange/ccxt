@@ -376,6 +376,13 @@ export default class whitebit extends Exchange {
                     'fetchOHLCV': {
                         'limit': 1440,
                     },
+                    'fetchWithdrawals': {
+                        'marginMode': false,
+                        'limit': 100,
+                        'daysBack': undefined,
+                        'untilDays': undefined,
+                        'symbolRequired': false,
+                    },
                 },
                 'spot': {
                     'extends': 'default',
