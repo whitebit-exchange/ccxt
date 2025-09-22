@@ -1096,7 +1096,7 @@ export default class whitebit extends Exchange {
      * @param {object} [params] extra parameters specific to the exchange API endpoint
      * @returns {object} a [funding limits structure]{@link https://docs.ccxt.com/#/?id=funding-limits-structure}
      */
-    async fetchFundingLimits (codes: Strings = undefined, params = {}): Promise<any> {
+    async fetchFundingLimits (codes: Strings = undefined, params = {}) {
         await this.loadMarkets ();
         // Fetch both currencies and fees data for comprehensive funding limits
         let currenciesData = {};
