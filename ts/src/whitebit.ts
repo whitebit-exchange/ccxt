@@ -96,8 +96,8 @@ export default class whitebit extends Exchange {
                 'fetchTrades': true,
                 'fetchTradingFee': false,
                 'fetchTradingFees': true,
-                'fetchTransactionFees': true,
                 'fetchTradingLimits': true,
+                'fetchTransactionFees': true,
                 'fetchWithdrawals': true,
                 'repayCrossMargin': false,
                 'repayIsolatedMargin': false,
@@ -1023,8 +1023,6 @@ export default class whitebit extends Exchange {
         //     }
         //
         const result: Dict = {};
-        // Create symbol set for efficient O(1) lookup if symbols are specified
-        const symbolSet = symbols ? new Set (symbols) : undefined;
         // Process all markets from the loaded markets cache
         const marketIds = Object.keys (this.markets);
         for (let i = 0; i < marketIds.length; i++) {
@@ -1035,8 +1033,17 @@ export default class whitebit extends Exchange {
             }
             const symbol = market['symbol'];
             // Filter by symbols if specified
-            if (symbolSet && !symbolSet.has (symbol)) {
-                continue; // Skip symbols not in requested list
+            if (symbols) {
+                let symbolFound = false;
+                for (let j = 0; j < symbols.length; j++) {
+                    if (symbols[j] === symbol) {
+                        symbolFound = true;
+                        break;
+                    }
+                }
+                if (!symbolFound) {
+                    continue; // Skip symbols not in requested list
+                }
             }
             // Validate and extract trading limits
             try {
