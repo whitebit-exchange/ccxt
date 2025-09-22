@@ -99,6 +99,7 @@ export default class whitebit extends Exchange {
                 'fetchTradingFees': true,
                 'fetchTradingLimits': true,
                 'fetchTransactionFees': true,
+                'fetchTransactions': true,
                 'fetchWithdrawals': true,
                 'fetchTransactions': true,
                 'repayCrossMargin': false,
@@ -2443,17 +2444,16 @@ export default class whitebit extends Exchange {
         if (limit !== undefined) {
             request['limit'] = limit;
         }
-        // Use transactionMethod parameter to filter deposits server-side (method = 1)
-        request['transactionMethod'] = '1';
+        // Do not filter by transactionMethod to get all transactions (deposits and withdrawals)
         const response = await this.v4PrivatePostMainAccountHistory (this.extend (request, params));
         //
         //     [
         //         {
         //             "id": 123456789,                    // Transaction ID
-        //             "method": "1",                      // Method: 1=deposit, 2=withdrawal (filtered server-side)
+        //             "method": "1",                      // Method: 1=deposit, 2=withdrawal
         //             "ticker": "BTC",                    // Currency ticker
         //             "amount": "0.001",                  // Transaction amount
-        //             "address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", // Deposit address
+        //             "address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", // Transaction address
         //             "memo": "",                         // Memo/tag (if required)
         //             "network": "BTC",                   // Network name
         //             "fee": "0.0005",                    // Transaction fee
@@ -2461,7 +2461,7 @@ export default class whitebit extends Exchange {
         //             "timestamp": 1641051917,            // Transaction timestamp
         //             "txid": "abc123def456..."           // Transaction hash
         //         },
-        //         { ... }                                 // More deposit transactions
+        //         { ... }                                 // More transactions (deposits and withdrawals)
         //     ]
         //
         return this.parseTransactions (response, currency, since, limit);
