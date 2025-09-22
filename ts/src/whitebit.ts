@@ -68,6 +68,7 @@ export default class whitebit extends Exchange {
                 'fetchDepositWithdrawFee': 'emulated',
                 'fetchDepositWithdrawFees': true,
                 'fetchFundingHistory': true,
+                'fetchFundingLimits': true,
                 'fetchFundingRate': true,
                 'fetchFundingRateHistory': false,
                 'fetchFundingRates': true,
@@ -1081,6 +1082,159 @@ export default class whitebit extends Exchange {
                 const errorMessage = this.safeString (error, 'message', 'Unknown error');
                 this.log ('warn', 'Skipping market with invalid trading limits', { 'symbol': symbol, 'error': errorMessage });
             }
+        }
+        return result;
+    }
+
+    /**
+     * @method
+     * @name whitebit#fetchFundingLimits
+     * @description fetch the deposit and withdrawal limits for a currency
+     * @see https://docs.whitebit.com/public/http-v4/#asset-status-list
+     * @see https://docs.whitebit.com/public/http-v4/#fee
+     * @param {string[]|undefined} codes unified currency codes
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @returns {object} a [funding limits structure]{@link https://docs.ccxt.com/#/?id=funding-limits-structure}
+     */
+    async fetchFundingLimits (codes: Strings = undefined, params = {}): Promise<any> {
+        await this.loadMarkets ();
+        // Fetch both currencies and fees data for comprehensive funding limits
+        const [ currencies, fees ] = await Promise.allSettled ([
+            this.fetchCurrencies (),
+            this.v4PublicGetFee (params),
+        ]);
+        const currenciesData = currencies.status === 'fulfilled' ? currencies.value : {};
+        const feesData = fees.status === 'fulfilled' ? fees.value : {};
+        //
+        // Currencies response structure (from fetchCurrencies):
+        //     {
+        //         "BTC": {
+        //             "id": "BTC",                          // Currency ID
+        //             "code": "BTC",                        // Currency code
+        //             "name": "Bitcoin",                    // Currency name
+        //             "active": true,                       // Currency active status
+        //             "type": "crypto",                     // Currency type
+        //             "precision": 8,                       // Currency precision
+        //             "limits": {                           // Currency limits
+        //                 "deposit": {                      // Deposit limits
+        //                     "min": 0.00001,               // Minimum deposit
+        //                     "max": 1000000                // Maximum deposit
+        //                 },
+        //                 "withdraw": {                     // Withdrawal limits
+        //                     "min": 0.00001,               // Minimum withdrawal
+        //                     "max": 1000000                // Maximum withdrawal
+        //                 }
+        //             },
+        //             "networks": {                         // Network-specific limits
+        //                 "BTC": {
+        //                     "limits": {
+        //                         "deposit": { "min": "0.001" },
+        //                         "withdraw": { "min": "0.002" }
+        //                     }
+        //                 }
+        //             },
+        //             "info": { ... }                       // Original API response
+        //         }
+        //     }
+        //
+        // Fees response structure (from /api/v4/public/fee):
+        //     {
+        //         "USDT (ERC20)": {
+        //             "ticker": "USDT",
+        //             "name": "Tether US",
+        //             "deposit": {
+        //                 "min_amount": "0.0005",
+        //                 "max_amount": "0.1",
+        //                 "fixed": "0.0005",
+        //                 "flex": {
+        //                     "min_fee": "100",
+        //                     "max_fee": "1000",
+        //                     "percent": "10"
+        //                 }
+        //             },
+        //             "withdraw": {
+        //                 "min_amount": "0.001",
+        //                 "max_amount": "0",
+        //                 "fixed": null,
+        //                 "flex": null
+        //             }
+        //         }
+        //     }
+        //
+        const result: Dict = {};
+        const currencyKeys = Object.keys (currenciesData);
+        for (let i = 0; i < currencyKeys.length; i++) {
+            const code = currencyKeys[i];
+            const currency = currenciesData[code];
+            if (!currency) {
+                this.log ('warn', 'Skipping invalid currency', { 'code': code });
+                continue;
+            }
+            if (codes !== undefined && !this.inArray (code, codes)) {
+                this.log ('debug', 'Skipping currency not in requested list', { 'code': code });
+                continue;
+            }
+            // Find corresponding fee data for this currency
+            let feeData = undefined;
+            const feeKeys = Object.keys (feesData);
+            for (let j = 0; j < feeKeys.length; j++) {
+                const feeKey = feeKeys[j];
+                const fee = feesData[feeKey];
+                if (fee && fee['ticker'] === code) {
+                    feeData = fee;
+                    break;
+                }
+            }
+            // Build comprehensive funding limits
+            const limits: Dict = {
+                'deposit': {
+                    'min': currency['limits']['deposit']['min'],
+                    'max': currency['limits']['deposit']['max'],
+                },
+                'withdraw': {
+                    'min': currency['limits']['withdraw']['min'],
+                    'max': currency['limits']['withdraw']['max'],
+                },
+            };
+            // Add fee information if available
+            if (feeData) {
+                const depositFee = feeData['deposit'];
+                const withdrawFee = feeData['withdraw'];
+                if (depositFee) {
+                    const depositFeeData = {
+                        'fixed': this.safeNumber (depositFee, 'fixed'),
+                    };
+                    if (depositFee['flex']) {
+                        depositFeeData['flex'] = {
+                            'min': this.safeNumber (depositFee['flex'], 'min_fee'),
+                            'max': this.safeNumber (depositFee['flex'], 'max_fee'),
+                            'percent': this.safeNumber (depositFee['flex'], 'percent'),
+                        };
+                    }
+                    limits['deposit']['fee'] = depositFeeData;
+                }
+                if (withdrawFee) {
+                    const withdrawFeeData = {
+                        'fixed': this.safeNumber (withdrawFee, 'fixed'),
+                    };
+                    if (withdrawFee['flex']) {
+                        withdrawFeeData['flex'] = {
+                            'min': this.safeNumber (withdrawFee['flex'], 'min_fee'),
+                            'max': this.safeNumber (withdrawFee['flex'], 'max_fee'),
+                            'percent': this.safeNumber (withdrawFee['flex'], 'percent'),
+                        };
+                    }
+                    limits['withdraw']['fee'] = withdrawFeeData;
+                }
+            }
+            // Add network-specific limits if available
+            if (currency['networks']) {
+                limits['networks'] = currency['networks'];
+            }
+            result[code] = {
+                'info': currency,
+                'limits': limits,
+            };
         }
         return result;
     }
