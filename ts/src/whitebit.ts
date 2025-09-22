@@ -96,6 +96,7 @@ export default class whitebit extends Exchange {
                 'fetchTrades': true,
                 'fetchTradingFee': false,
                 'fetchTradingFees': true,
+                'fetchTradingLimits': true,
                 'fetchTransactionFees': true,
                 'fetchWithdrawals': true,
                 'repayCrossMargin': false,
@@ -962,6 +963,122 @@ export default class whitebit extends Exchange {
                 'maker': this.parseNumber (makerFee),
                 'taker': this.parseNumber (takerFee),
             };
+        }
+        return result;
+    }
+
+    /**
+     * @method
+     * @name whitebit#fetchTradingLimits
+     * @description fetch the trading limits for a market
+     * @see https://docs.whitebit.com/public/http-v4/#market-info
+     * @param {string[]|undefined} symbols unified market symbol
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @returns {object} a [trading limits structure]{@link https://docs.ccxt.com/#/?id=trading-limits-structure}
+     */
+    async fetchTradingLimits (symbols: Strings = undefined, params = {}): Promise<any> {
+        await this.loadMarkets ();
+        //
+        // Trading limits are derived from market information already loaded by loadMarkets()
+        // Market structure includes:
+        //     {
+        //         "id": "BTC_USDT",                    // Market ID
+        //         "symbol": "BTC/USDT",                // Unified symbol
+        //         "base": "BTC",                       // Base currency
+        //         "quote": "USDT",                     // Quote currency
+        //         "active": true,                      // Market active status
+        //         "type": "spot",                      // Market type
+        //         "spot": true,                        // Spot trading enabled
+        //         "margin": false,                     // Margin trading enabled
+        //         "future": false,                     // Futures trading enabled
+        //         "option": false,                     // Options trading enabled
+        //         "contract": false,                   // Contract trading enabled
+        //         "settle": undefined,                 // Settlement currency
+        //         "settleId": undefined,               // Settlement currency ID
+        //         "contractSize": undefined,           // Contract size
+        //         "linear": undefined,                 // Linear contract
+        //         "inverse": undefined,                // Inverse contract
+        //         "limits": {                          // Trading limits
+        //             "amount": {                      // Amount limits
+        //                 "min": 0.00001,              // Minimum amount
+        //                 "max": 1000000               // Maximum amount
+        //             },
+        //             "price": {                       // Price limits
+        //                 "min": 0.01,                 // Minimum price
+        //                 "max": 1000000               // Maximum price
+        //             },
+        //             "cost": {                        // Cost limits
+        //                 "min": 5.0,                  // Minimum cost
+        //                 "max": 10000000              // Maximum cost
+        //             }
+        //         },
+        //         "precision": {                       // Precision settings
+        //             "amount": 5,                     // Amount precision
+        //             "price": 2                       // Price precision
+        //         },
+        //         "taker": 0.001,                      // Taker fee
+        //         "maker": 0.001,                      // Maker fee
+        //         "percentage": true,                  // Fee percentage
+        //         "tierBased": false                   // Tier-based fees
+        //     }
+        //
+        const result: Dict = {};
+        // Process all markets from the loaded markets cache
+        const marketIds = Object.keys (this.markets);
+        for (let i = 0; i < marketIds.length; i++) {
+            const marketId = marketIds[i];
+            const market = this.markets[marketId];
+            if (!market || !market['symbol']) {
+                continue; // Skip invalid markets silently
+            }
+            const symbol = market['symbol'];
+            // Filter by symbols if specified
+            if (symbols) {
+                let symbolFound = false;
+                for (let j = 0; j < symbols.length; j++) {
+                    if (symbols[j] === symbol) {
+                        symbolFound = true;
+                        break;
+                    }
+                }
+                if (!symbolFound) {
+                    continue; // Skip symbols not in requested list
+                }
+            }
+            // Validate and extract trading limits
+            try {
+                const limits = this.safeDict (market, 'limits');
+                const amountLimits = this.safeDict (limits, 'amount');
+                const priceLimits = this.safeDict (limits, 'price');
+                const costLimits = this.safeDict (limits, 'cost');
+                // Validate that all required limits exist and are valid numbers
+                const hasAmountLimits = amountLimits && this.safeNumber (amountLimits, 'min') !== undefined && this.safeNumber (amountLimits, 'max') !== undefined;
+                const hasPriceLimits = priceLimits && this.safeNumber (priceLimits, 'min') !== undefined && this.safeNumber (priceLimits, 'max') !== undefined;
+                const hasCostLimits = costLimits && this.safeNumber (costLimits, 'min') !== undefined && this.safeNumber (costLimits, 'max') !== undefined;
+                if (hasAmountLimits && hasPriceLimits && hasCostLimits) {
+                    result[symbol] = {
+                        'info': market,
+                        'limits': {
+                            'amount': {
+                                'min': this.safeNumber (amountLimits, 'min'),
+                                'max': this.safeNumber (amountLimits, 'max'),
+                            },
+                            'price': {
+                                'min': this.safeNumber (priceLimits, 'min'),
+                                'max': this.safeNumber (priceLimits, 'max'),
+                            },
+                            'cost': {
+                                'min': this.safeNumber (costLimits, 'min'),
+                                'max': this.safeNumber (costLimits, 'max'),
+                            },
+                        },
+                    };
+                }
+            } catch (error) {
+                // Skip markets with invalid limit data
+                const errorMessage = this.safeString (error, 'message', 'Unknown error');
+                this.log ('warn', 'Skipping market with invalid trading limits', { 'symbol': symbol, 'error': errorMessage });
+            }
         }
         return result;
     }
