@@ -360,6 +360,7 @@ export default class whitebit extends Exchange {
                         'symbolRequired': false,
                     },
                     'fetchOrders': {
+                        'marginMode': false,
                         'limit': 100,
                         'symbolRequired': false,
                     },
