@@ -1260,19 +1260,15 @@ export default class whitebit extends Exchange {
      */
     async fetchLedger (code: Str = undefined, since: Int = undefined, limit: Int = undefined, params = {}): Promise<LedgerEntry[]> {
         await this.loadMarkets ();
-        // Execute API calls in parallel for better performance
-        const [ transactionsResult, tradesResult ] = await Promise.allSettled ([
-            this.fetchTransactions (code, since, limit, params),
-            this.fetchMyTrades (undefined, since, limit, params),
-        ]);
         const ledger = [];
-        // Process transactions (deposits/withdrawals)
-        if (transactionsResult.status === 'fulfilled') {
-            const transactions = transactionsResult.value;
+        // Fetch transactions (deposits/withdrawals)
+        try {
+            const transactions = await this.fetchTransactions (code, since, limit, params);
             for (let i = 0; i < transactions.length; i++) {
                 const transaction = transactions[i];
                 const direction = transaction['type'] === 'deposit' ? 'in' : 'out';
-                const amount = Math.abs (transaction['amount']);
+                const amount = this.safeNumber (transaction, 'amount', 0);
+                const absAmount = amount < 0 ? -amount : amount;
                 ledger.push ({
                     'id': transaction['id'],
                     'direction': direction,
@@ -1281,7 +1277,7 @@ export default class whitebit extends Exchange {
                     'referenceAccount': undefined,
                     'type': 'transaction',
                     'currency': transaction['currency'],
-                    'amount': amount,
+                    'amount': absAmount,
                     'timestamp': transaction['timestamp'],
                     'datetime': transaction['datetime'],
                     'before': undefined,
@@ -1294,13 +1290,13 @@ export default class whitebit extends Exchange {
                     'info': transaction['info'],
                 });
             }
-        } else {
+        } catch (error) {
             // Log warning if transactions failed to fetch
-            this.log ('warn', 'Failed to fetch transactions for ledger:', transactionsResult.reason);
+            this.log ('warn', 'Failed to fetch transactions for ledger:', this.safeString (error, 'message', 'Unknown error'));
         }
-        // Process trades
-        if (tradesResult.status === 'fulfilled') {
-            const trades = tradesResult.value;
+        // Fetch trades
+        try {
+            const trades = await this.fetchMyTrades (undefined, since, limit, params);
             for (let i = 0; i < trades.length; i++) {
                 const trade = trades[i];
                 const market = this.market (trade['symbol']);
@@ -1344,9 +1340,9 @@ export default class whitebit extends Exchange {
                     });
                 }
             }
-        } else {
+        } catch (error) {
             // Log warning if trades failed to fetch
-            this.log ('warn', 'Failed to fetch trades for ledger:', tradesResult.reason);
+            this.log ('warn', 'Failed to fetch trades for ledger:', this.safeString (error, 'message', 'Unknown error'));
         }
         // Return early if no ledger entries
         if (ledger.length === 0) {
