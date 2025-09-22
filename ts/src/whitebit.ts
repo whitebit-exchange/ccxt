@@ -1099,12 +1099,19 @@ export default class whitebit extends Exchange {
     async fetchFundingLimits (codes: Strings = undefined, params = {}): Promise<any> {
         await this.loadMarkets ();
         // Fetch both currencies and fees data for comprehensive funding limits
-        const [ currencies, fees ] = await Promise.allSettled ([
-            this.fetchCurrencies (),
-            this.v4PublicGetFee (params),
-        ]);
-        const currenciesData = currencies.status === 'fulfilled' ? currencies.value : {};
-        const feesData = fees.status === 'fulfilled' ? fees.value : {};
+        let currenciesData = {};
+        let feesData = {};
+        try {
+            const [ currencies, fees ] = await Promise.all ([
+                this.fetchCurrencies (),
+                this.v4PublicGetFee (params),
+            ]);
+            currenciesData = currencies;
+            feesData = fees;
+        } catch (error) {
+            // Handle individual failures gracefully
+            this.log ('warn', 'Failed to fetch some funding data', { 'error': this.safeString (error, 'message', 'Unknown error') });
+        }
         //
         // Currencies response structure (from fetchCurrencies):
         //     {
