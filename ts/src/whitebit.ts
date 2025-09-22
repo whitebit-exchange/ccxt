@@ -1059,7 +1059,7 @@ export default class whitebit extends Exchange {
             }
         }
         return result;
-    }  
+    }
 
     /**
      * @method
