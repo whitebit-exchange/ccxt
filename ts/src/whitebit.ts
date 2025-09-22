@@ -1076,7 +1076,7 @@ export default class whitebit extends Exchange {
                 }
             } catch (error) {
                 // Skip markets with invalid limit data
-                const errorMessage = error instanceof Error ? error.message : String (error);
+                const errorMessage = this.safeString (error, 'message', 'Unknown error');
                 this.log ('warn', 'Skipping market with invalid trading limits', { 'symbol': symbol, 'error': errorMessage });
             }
         }
