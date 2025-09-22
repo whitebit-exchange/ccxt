@@ -6,7 +6,7 @@ import { ExchangeNotAvailable, ExchangeError, DDoSProtection, BadSymbol, Invalid
 import { Precise } from './base/Precise.js';
 import { TICK_SIZE } from './base/functions/number.js';
 import { sha512 } from './static_dependencies/noble-hashes/sha512.js';
-import type { TransferEntry, Balances, Bool, Currency, Int, Market, MarketType, OHLCV, Order, OrderBook, OrderSide, OrderType, Str, Strings, Ticker, Tickers, Trade, Transaction, Num, Currencies, TradingFees, Dict, int, FundingRate, FundingRates, DepositAddress, Conversion, BorrowInterest, FundingHistory, Position, CrossBorrowRate } from './base/types.js';
+import type { TransferEntry, Balances, Bool, Currency, Int, Market, MarketType, OHLCV, Order, OrderBook, OrderSide, OrderType, Str, Strings, Ticker, Tickers, Trade, Transaction, Num, Currencies, TradingFees, Dict, int, FundingRate, FundingRates, DepositAddress, Conversion, BorrowInterest, FundingHistory, Position, CrossBorrowRate, Account } from './base/types.js';
 
 //  ---------------------------------------------------------------------------
 
@@ -48,6 +48,7 @@ export default class whitebit extends Exchange {
                 'createStopOrder': true,
                 'createTriggerOrder': true,
                 'editOrder': false,
+                'fetchAccounts': true,
                 'fetchBalance': true,
                 'fetchBorrowRateHistories': false,
                 'fetchBorrowRateHistory': false,
@@ -98,6 +99,7 @@ export default class whitebit extends Exchange {
                 'fetchTradingFees': true,
                 'fetchTradingLimits': true,
                 'fetchTransactionFees': true,
+                'fetchTransactions': true,
                 'fetchWithdrawals': true,
                 'repayCrossMargin': false,
                 'repayIsolatedMargin': false,
@@ -2414,6 +2416,58 @@ export default class whitebit extends Exchange {
 
     /**
      * @method
+     * @name whitebit#fetchTransactions
+     * @description fetch history of deposits and withdrawals
+     * @see https://docs.whitebit.com/private/http-main-v4/#get-depositwithdraw-history
+     * @param {string} [code] unified currency code
+     * @param {int} [since] the earliest time in ms to fetch transactions for
+     * @param {int} [limit] the maximum number of transactions structures to retrieve
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @param {string} [params.transactionMethod] transaction method (1=deposit, 2=withdrawal) - automatically set to '1' for deposits
+     * @returns {object[]} a list of [transaction structures]{@link https://docs.ccxt.com/#/?id=transaction-structure}
+     */
+    async fetchTransactions (code: Str = undefined, since: Int = undefined, limit: Int = undefined, params = {}): Promise<Transaction[]> {
+        await this.loadMarkets ();
+        let currency = undefined;
+        const request: Dict = {};
+        if (code !== undefined) {
+            currency = this.currency (code);
+            request['ticker'] = currency['id'];
+        }
+        if (since !== undefined) {
+            request['startDate'] = this.parseToInt (since / 1000);
+        }
+        if (limit === undefined || limit > 100) {
+            limit = 100;
+        }
+        if (limit !== undefined) {
+            request['limit'] = limit;
+        }
+        // Do not filter by transactionMethod to get all transactions (deposits and withdrawals)
+        const response = await this.v4PrivatePostMainAccountHistory (this.extend (request, params));
+        //
+        //     [
+        //         {
+        //             "id": 123456789,                    // Transaction ID
+        //             "method": "1",                      // Method: 1=deposit, 2=withdrawal
+        //             "ticker": "BTC",                    // Currency ticker
+        //             "amount": "0.001",                  // Transaction amount
+        //             "address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", // Transaction address
+        //             "memo": "",                         // Memo/tag (if required)
+        //             "network": "BTC",                   // Network name
+        //             "fee": "0.0005",                    // Transaction fee
+        //             "status": "1",                      // Status: 0=pending, 1=completed, 2=failed
+        //             "timestamp": 1641051917,            // Transaction timestamp
+        //             "txid": "abc123def456..."           // Transaction hash
+        //         },
+        //         { ... }                                 // More transactions (deposits and withdrawals)
+        //     ]
+        //
+        return this.parseTransactions (response, currency, since, limit);
+    }
+
+    /**
+     * @method
      * @name whitebit#fetchDepositAddress
      * @description fetch the deposit address for a currency associated with this account
      * @see https://docs.whitebit.com/private/http-main-v4/#get-fiat-deposit-address
@@ -2542,6 +2596,48 @@ export default class whitebit extends Exchange {
             'address': this.safeString (depositAddress, 'address'),
             'tag': this.safeString (depositAddress, 'memo'),
         } as DepositAddress;
+    }
+
+    /**
+     * @method
+     * @name whitebit#fetchAccounts
+     * @description fetch all the accounts associated with a profile
+     * @see https://docs.whitebit.com/private/http-main-v4/#sub-account-list
+     * @param {object} [params] extra parameters specific to the exchange API endpoint
+     * @returns {object[]} a list of [account structures]{@link https://docs.ccxt.com/#/?id=account-structure}
+     */
+    async fetchAccounts (params = {}): Promise<Account[]> {
+        await this.loadMarkets ();
+        const accounts = [];
+        // Fetch sub-accounts
+        //
+        //     [
+        //         {
+        //             "id": "12345",
+        //             "name": "SubAccount1",
+        //             "status": "active",
+        //             "permissions": ["trade", "withdraw"]
+        //         }
+        //     ]
+        //
+        const subAccounts = await this.v4PrivatePostSubAccountList (params);
+        if (subAccounts && Array.isArray (subAccounts)) {
+            for (let i = 0; i < subAccounts.length; i++) {
+                const subAccount = this.safeValue (subAccounts, i);
+                const accountId = this.safeString (subAccount, 'id');
+                const accountName = this.safeString (subAccount, 'name');
+                if (accountId) {
+                    accounts.push ({
+                        'id': accountId,
+                        'type': 'subaccount',
+                        'name': accountName || 'SubAccount ' + accountId,
+                        'code': undefined,
+                        'info': subAccount,
+                    });
+                }
+            }
+        }
+        return accounts;
     }
 
     /**
