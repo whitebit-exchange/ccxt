@@ -10,8 +10,6 @@ import type { TransferEntry, Balances, Bool, Currency, Int, Market, MarketType, 
 
 //  ---------------------------------------------------------------------------
 
-// Initial comment, add additional comment to trigger pipelines
-
 /**
  * @class whitebit
  * @augments Exchange
