@@ -1049,39 +1049,33 @@ export default class whitebit extends Exchange {
                     continue; // Skip symbols not in requested list
                 }
             }
-            // Validate and extract trading limits
-            try {
-                const limits = this.safeDict (market, 'limits');
-                const amountLimits = this.safeDict (limits, 'amount');
-                const priceLimits = this.safeDict (limits, 'price');
-                const costLimits = this.safeDict (limits, 'cost');
-                // Validate that all required limits exist and are valid numbers
-                const hasAmountLimits = amountLimits && this.safeNumber (amountLimits, 'min') !== undefined && this.safeNumber (amountLimits, 'max') !== undefined;
-                const hasPriceLimits = priceLimits && this.safeNumber (priceLimits, 'min') !== undefined && this.safeNumber (priceLimits, 'max') !== undefined;
-                const hasCostLimits = costLimits && this.safeNumber (costLimits, 'min') !== undefined && this.safeNumber (costLimits, 'max') !== undefined;
-                if (hasAmountLimits && hasPriceLimits && hasCostLimits) {
-                    result[symbol] = {
-                        'info': market,
-                        'limits': {
-                            'amount': {
-                                'min': this.safeNumber (amountLimits, 'min'),
-                                'max': this.safeNumber (amountLimits, 'max'),
-                            },
-                            'price': {
-                                'min': this.safeNumber (priceLimits, 'min'),
-                                'max': this.safeNumber (priceLimits, 'max'),
-                            },
-                            'cost': {
-                                'min': this.safeNumber (costLimits, 'min'),
-                                'max': this.safeNumber (costLimits, 'max'),
-                            },
+            // Extract trading limits
+            const limits = this.safeDict (market, 'limits');
+            const amountLimits = this.safeDict (limits, 'amount');
+            const priceLimits = this.safeDict (limits, 'price');
+            const costLimits = this.safeDict (limits, 'cost');
+            // Validate that all required limits exist and are valid numbers
+            const hasAmountLimits = amountLimits && this.safeNumber (amountLimits, 'min') !== undefined && this.safeNumber (amountLimits, 'max') !== undefined;
+            const hasPriceLimits = priceLimits && this.safeNumber (priceLimits, 'min') !== undefined && this.safeNumber (priceLimits, 'max') !== undefined;
+            const hasCostLimits = costLimits && this.safeNumber (costLimits, 'min') !== undefined && this.safeNumber (costLimits, 'max') !== undefined;
+            if (hasAmountLimits && hasPriceLimits && hasCostLimits) {
+                result[symbol] = {
+                    'info': market,
+                    'limits': {
+                        'amount': {
+                            'min': this.safeNumber (amountLimits, 'min'),
+                            'max': this.safeNumber (amountLimits, 'max'),
                         },
-                    };
-                }
-            } catch (error) {
-                // Skip markets with invalid limit data
-                const errorMessage = this.safeString (error, 'message', 'Unknown error');
-                this.log ('warn', 'Skipping market with invalid trading limits', { 'symbol': symbol, 'error': errorMessage });
+                        'price': {
+                            'min': this.safeNumber (priceLimits, 'min'),
+                            'max': this.safeNumber (priceLimits, 'max'),
+                        },
+                        'cost': {
+                            'min': this.safeNumber (costLimits, 'min'),
+                            'max': this.safeNumber (costLimits, 'max'),
+                        },
+                    },
+                };
             }
         }
         return result;
@@ -1097,22 +1091,13 @@ export default class whitebit extends Exchange {
      * @param {object} [params] extra parameters specific to the exchange API endpoint
      * @returns {object} a [funding limits structure]{@link https://docs.ccxt.com/#/?id=funding-limits-structure}
      */
-    async fetchFundingLimits (codes: Strings = undefined, params = {}): Promise<any> {
+    async fetchFundingLimits (codes: Strings = undefined, params = {}) {
         await this.loadMarkets ();
         // Fetch both currencies and fees data for comprehensive funding limits
-        let currenciesData = {};
-        let feesData = {};
-        try {
-            const [ currencies, fees ] = await Promise.all ([
-                this.fetchCurrencies (),
-                this.v4PublicGetFee (params),
-            ]);
-            currenciesData = currencies;
-            feesData = fees;
-        } catch (error) {
-            // Handle individual failures gracefully
-            this.log ('warn', 'Failed to fetch some funding data', { 'error': this.safeString (error, 'message', 'Unknown error') });
-        }
+        const [ currenciesData, feesData ] = await Promise.all ([
+            this.fetchCurrencies (),
+            this.v4PublicGetFee (params),
+        ]);
         //
         // Currencies response structure (from fetchCurrencies):
         //     {
@@ -1175,11 +1160,11 @@ export default class whitebit extends Exchange {
             const code = currencyKeys[i];
             const currency = currenciesData[code];
             if (!currency) {
-                this.log ('warn', 'Skipping invalid currency', { 'code': code });
+                // Skip invalid currency silently
                 continue;
             }
             if (codes !== undefined && !this.inArray (code, codes)) {
-                this.log ('debug', 'Skipping currency not in requested list', { 'code': code });
+                // Skip currency not in requested list silently
                 continue;
             }
             // Find corresponding fee data for this currency
