@@ -1337,7 +1337,7 @@ export default class whitebit extends Exchange {
             'askVolume': undefined,
             'vwap': undefined,
             'open': this.safeNumber (ticker, 'open'),
-            'close': this.safeNumber (ticker, 'close', this.safeNumber (ticker, 'last')),
+            'close': close,
             'last': this.safeNumber (ticker, 'last'),
             'previousClose': undefined,
             'change': undefined,
