@@ -311,8 +311,7 @@ class Exchange(object):
     bidsasks = None
     base_currencies = None
     quote_currencies = None
-    currencies = None
-
+    currencies = {}
     options = None  # Python does not allow to define properties in run-time with setattr
     isSandboxModeEnabled = False
     accounts = None
@@ -1916,7 +1915,7 @@ class Exchange(object):
     # ########################################################################
     # ########################################################################
 
-    # METHODS BELOW THIS LINE ARE TRANSPILED FROM JAVASCRIPT TO PYTHON AND PHP
+    # METHODS BELOW THIS LINE ARE TRANSPILED FROM TYPESCRIPT
 
     def describe(self) -> Any:
         return {
@@ -2590,6 +2589,22 @@ class Exchange(object):
             self.urls = newUrls
             # set flag
             self.isSandboxModeEnabled = False
+
+    def enable_demo_trading(self, enable: bool):
+        """
+        enables or disables demo trading mode
+        :param boolean [enable]: True if demo trading should be enabled, False otherwise
+        """
+        if self.isSandboxModeEnabled:
+            raise NotSupported(self.id + ' demo trading does not support in sandbox environment. Please check https://www.binance.com/en/support/faq/detail/9be58f73e5e14338809e3b705b9687dd to see the differences')
+        if enable:
+            self.urls['apiBackupDemoTrading'] = self.urls['api']
+            self.urls['api'] = self.urls['demo']
+        elif 'apiBackupDemoTrading' in self.urls:
+            self.urls['api'] = self.urls['apiBackupDemoTrading']
+            newUrls = self.omit(self.urls, 'apiBackupDemoTrading')
+            self.urls = newUrls
+        self.options['enableDemoTrading'] = enable
 
     def sign(self, path, api: Any = 'public', method='GET', params={}, headers: Any = None, body: Any = None):
         return {}
@@ -3275,7 +3290,11 @@ class Exchange(object):
         marketsSortedById = self.keysort(self.markets_by_id)
         self.symbols = list(marketsSortedBySymbol.keys())
         self.ids = list(marketsSortedById.keys())
+        numCurrencies = 0
         if currencies is not None:
+            keys = list(currencies.keys())
+            numCurrencies = len(keys)
+        if numCurrencies > 0:
             # currencies is always None when called in constructor but not when called from loadMarkets
             self.currencies = self.map_to_safe_map(self.deep_extend(self.currencies, currencies))
         else:
@@ -3343,6 +3362,12 @@ class Exchange(object):
         self.baseCurrencies = sourceExchange.baseCurrencies
         self.quoteCurrencies = sourceExchange.quoteCurrencies
         self.codes = sourceExchange.codes
+        # check marketHelperProps
+        sourceExchangeHelpers = self.safe_list(sourceExchange.options, 'marketHelperProps', [])
+        for i in range(0, len(sourceExchangeHelpers)):
+            helper = sourceExchangeHelpers[i]
+            if sourceExchange.options[helper] is not None:
+                self.options[helper] = sourceExchange.options[helper]
         return self
 
     def get_describe_for_extended_ws_exchange(self, currentRestInstance: Any, parentRestInstance: Any, wsBaseDescribe: dict):
@@ -5653,7 +5678,9 @@ class Exchange(object):
         return self.safe_string(self.commonCurrencies, code, code)
 
     def currency(self, code: str):
-        if self.currencies is None:
+        keys = list(self.currencies.keys())
+        numCurrencies = len(keys)
+        if numCurrencies == 0:
             raise ExchangeError(self.id + ' currencies not loaded')
         if isinstance(code, str):
             if code in self.currencies:

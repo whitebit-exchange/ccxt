@@ -1754,7 +1754,7 @@ export default class Exchange {
     // ########################################################################
 
     // ------------------------------------------------------------------------
-    // METHODS BELOW THIS LINE ARE TRANSPILED FROM JAVASCRIPT TO PYTHON AND PHP
+    // METHODS BELOW THIS LINE ARE TRANSPILED FROM TYPESCRIPT
 
     describe (): any {
         return {
@@ -2520,6 +2520,27 @@ export default class Exchange {
             // set flag
             this.isSandboxModeEnabled = false;
         }
+    }
+
+    /**
+     * @method
+     * @name Exchange#enableDemoTrading
+     * @description enables or disables demo trading mode
+     * @param {boolean} [enable] true if demo trading should be enabled, false otherwise
+     */
+    enableDemoTrading (enable: boolean) {
+        if (this.isSandboxModeEnabled) {
+            throw new NotSupported (this.id + ' demo trading does not support in sandbox environment. Please check https://www.binance.com/en/support/faq/detail/9be58f73e5e14338809e3b705b9687dd to see the differences');
+        }
+        if (enable) {
+            this.urls['apiBackupDemoTrading'] = this.urls['api'];
+            this.urls['api'] = this.urls['demo'];
+        } else if ('apiBackupDemoTrading' in this.urls) {
+            this.urls['api'] = this.urls['apiBackupDemoTrading'] as any;
+            const newUrls = this.omit (this.urls, 'apiBackupDemoTrading');
+            this.urls = newUrls;
+        }
+        this.options['enableDemoTrading'] = enable;
     }
 
     sign (path, api: any = 'public', method = 'GET', params = {}, headers: any = undefined, body: any = undefined) {
@@ -3365,7 +3386,12 @@ export default class Exchange {
         const marketsSortedById = this.keysort (this.markets_by_id);
         this.symbols = Object.keys (marketsSortedBySymbol);
         this.ids = Object.keys (marketsSortedById);
+        let numCurrencies = 0;
         if (currencies !== undefined) {
+            const keys = Object.keys (currencies);
+            numCurrencies = keys.length;
+        }
+        if (numCurrencies > 0) {
             // currencies is always undefined when called in constructor but not when called from loadMarkets
             this.currencies = this.mapToSafeMap (this.deepExtend (this.currencies, currencies));
         } else {
@@ -3443,6 +3469,14 @@ export default class Exchange {
         this.baseCurrencies = sourceExchange.baseCurrencies;
         this.quoteCurrencies = sourceExchange.quoteCurrencies;
         this.codes = sourceExchange.codes;
+        // check marketHelperProps
+        const sourceExchangeHelpers = this.safeList (sourceExchange.options, 'marketHelperProps', []);
+        for (let i = 0; i < sourceExchangeHelpers.length; i++) {
+            const helper = sourceExchangeHelpers[i];
+            if (sourceExchange.options[helper] !== undefined) {
+                this.options[helper] = sourceExchange.options[helper];
+            }
+        }
         return this;
     }
 
@@ -6334,7 +6368,9 @@ export default class Exchange {
     }
 
     currency (code: string) {
-        if (this.currencies === undefined) {
+        const keys = Object.keys (this.currencies);
+        const numCurrencies = keys.length;
+        if (numCurrencies === 0) {
             throw new ExchangeError (this.id + ' currencies not loaded');
         }
         if (typeof code === 'string') {
