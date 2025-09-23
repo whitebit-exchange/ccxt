@@ -5,7 +5,7 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
-    # Temporarily enabled for all branches - remove this comment and restore branches: [ main, master ] when done
+    branches: [ main, master ]
 
 permissions:
   contents: write
