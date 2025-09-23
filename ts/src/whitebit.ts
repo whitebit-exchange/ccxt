@@ -47,7 +47,7 @@ export default class whitebit extends Exchange {
                 'createStopMarketOrder': true,
                 'createStopOrder': true,
                 'createTriggerOrder': true,
-                'editOrder': false,
+                'editOrder': true,
                 'fetchAccounts': true,
                 'fetchBalance': true,
                 'fetchBorrowRateHistories': false,
@@ -1967,7 +1967,7 @@ export default class whitebit extends Exchange {
      * @param {object} [params] extra parameters specific to the exchange API endpoint
      * @returns {object} an [order structure]{@link https://docs.ccxt.com/#/?id=order-structure}
      */
-    async editOrder (id: string, symbol: string, type:OrderType, side: OrderSide, amount: Num = undefined, price: Num = undefined, params = {}) {
+    async editOrder (id: string, symbol: string, type: OrderType, side: OrderSide, amount: Num = undefined, price: Num = undefined, params = {}) {
         if (id === undefined) {
             throw new ArgumentsRequired (this.id + ' editOrder() requires a id argument');
         }
@@ -1977,40 +1977,48 @@ export default class whitebit extends Exchange {
         await this.loadMarkets ();
         const market = this.market (symbol);
         const request: Dict = {
-            'orderId': id,
             'market': market['id'],
         };
+        // Handle clientOrderId vs orderId (clientOrderId takes priority)
         const clientOrderId = this.safeString2 (params, 'clOrdId', 'clientOrderId');
         if (clientOrderId !== undefined) {
-            // Update clientOrderId of the order
             request['clientOrderId'] = clientOrderId;
+        } else {
+            request['orderId'] = id;
         }
-        const isLimitOrder = type === 'limit';
-        const triggerPrice = this.safeNumberN (params, [ 'triggerPrice', 'stopPrice', 'activation_price' ]);
+        // Handle amount vs total parameter based on order type and side
+        const triggerPrice = this.safeNumberN (params, [ 'triggerPrice', 'stopPrice', 'activationPrice' ]);
         const isStopOrder = (triggerPrice !== undefined);
-        params = this.omit (params, [ 'clOrdId', 'clientOrderId', 'triggerPrice', 'stopPrice' ]);
+        // Handle activation price for stop orders
         if (isStopOrder) {
             request['activation_price'] = this.priceToPrecision (symbol, triggerPrice);
+        }        
+        const isLimitOrder = type === 'limit';
+        const total = this.safeNumber (params, 'total');
+        if (total !== undefined) {
+            request['total'] = this.amountToPrecision (symbol, total);
+        } else if (amount !== undefined) {
             if (isLimitOrder) {
-                // stop limit order
+                // Limit orders always use amount parameter
                 request['amount'] = this.amountToPrecision (symbol, amount);
-                request['price'] = this.priceToPrecision (symbol, price);
+            } else if (type === 'market' && side === 'buy') {
+                // Market buy orders use total parameter
+                request['total'] = this.amountToPrecision (symbol, amount);
             } else {
-                // stop market order
-                if (side === 'buy') {
-                    // Use total parameter instead of amount for modify buy stop market order
-                    request['total'] = this.amountToPrecision (symbol, amount);
-                } else {
-                    request['amount'] = this.amountToPrecision (symbol, amount);
-                }
-            }
-        } else {
-            request['amount'] = this.amountToPrecision (symbol, amount);
-            if (isLimitOrder) {
-                // limit order
-                request['price'] = this.priceToPrecision (symbol, price);
+                // Market sell orders use amount parameter
+                request['amount'] = this.amountToPrecision (symbol, amount);
             }
         }
+        // Handle price parameter for limit orders
+        if (price !== undefined) {
+            request['price'] = this.priceToPrecision (symbol, price);
+        }
+        // Ensure at least one modifiable parameter is provided
+        const hasModifiableParam = (amount !== undefined) || (price !== undefined) || (triggerPrice !== undefined) || (total !== undefined);
+        if (!hasModifiableParam) {
+            throw new ArgumentsRequired (this.id + ' editOrder() requires at least one of: amount, price, activationPrice, or total parameters');
+        }
+        params = this.omit (params, [ 'clOrdId', 'clientOrderId', 'triggerPrice', 'stopPrice', 'activationPrice', 'total' ]);
         const response = await this.v4PrivatePostOrderModify (this.extend (request, params));
         return this.parseOrder (response);
     }
