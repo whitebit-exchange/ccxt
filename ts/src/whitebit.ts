@@ -1992,7 +1992,7 @@ export default class whitebit extends Exchange {
         // Handle activation price for stop orders
         if (isStopOrder) {
             request['activation_price'] = this.priceToPrecision (symbol, triggerPrice);
-        }        
+        }
         const isLimitOrder = type === 'limit';
         const total = this.safeNumber (params, 'total');
         if (total !== undefined) {
