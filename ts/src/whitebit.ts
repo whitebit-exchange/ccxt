@@ -1322,29 +1322,29 @@ export default class whitebit extends Exchange {
         const marketId = this.safeString (ticker, 'tradingPairs');
         market = this.safeMarket (marketId, market);
         // last price is provided as "last" or "last_price"
-        const last = this.safeStringN (ticker, [ 'last', 'last_price', 'lastPrice' ]);
+        const last = this.safeNumberN (ticker, [ 'last', 'last_price', 'lastPrice' ]);
         // if "close" is provided, use it, otherwise use <last>
-        const close = this.safeString (ticker, 'close', last);
+        const close = this.safeNumber (ticker, 'close', last);
         return this.safeTicker ({
             'symbol': market['symbol'],
             'timestamp': undefined,
             'datetime': undefined,
-            'high': this.safeString (ticker, 'high'),
-            'low': this.safeString (ticker, 'low'),
-            'bid': this.safeString2 (ticker, 'bid', 'highestBid'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber2 (ticker, 'bid', 'highestBid'),
             'bidVolume': undefined,
-            'ask': this.safeString2 (ticker, 'ask', 'lowestAsk'),
+            'ask': this.safeNumber2 (ticker, 'ask', 'lowestAsk'),
             'askVolume': undefined,
             'vwap': undefined,
-            'open': this.safeString (ticker, 'open'),
-            'close': close,
-            'last': last,
+            'open': this.safeNumber (ticker, 'open'),
+            'close': this.safeNumber (ticker, 'close', this.safeNumber (ticker, 'last')),
+            'last': this.safeNumber (ticker, 'last'),
             'previousClose': undefined,
             'change': undefined,
-            'percentage': this.safeString (ticker, 'change'),
+            'percentage': this.safeNumber (ticker, 'change'),
             'average': undefined,
-            'baseVolume': this.safeStringN (ticker, [ 'base_volume', 'volume', 'baseVolume24h' ]),
-            'quoteVolume': this.safeStringN (ticker, [ 'quote_volume', 'deal', 'quoteVolume24h' ]),
+            'baseVolume': this.safeNumberN (ticker, [ 'base_volume', 'volume', 'baseVolume24h' ]),
+            'quoteVolume': this.safeNumberN (ticker, [ 'quote_volume', 'deal', 'quoteVolume24h' ]),
             'info': ticker,
         }, market);
     }
