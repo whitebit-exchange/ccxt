@@ -38,7 +38,6 @@ function testFetchTickersAmounts (exchange: Exchange, skippedProperties: object,
         const nonInactiveMarkets = testSharedMethods.getActiveMarkets (exchange);
         const notInactiveSymbolsLength = nonInactiveMarkets.length;
         const obtainedTickersLength = tickersValues.length;
-        const toleranceCoefficient = 0.01; // 1% tolerance, eg. when 100 active markets, we should have at least 99 tickers
         const minRatio = 0.99; // 1.0 - 0.01 = 0.99, hardcoded to avoid C# transpiler type casting issues
         assert (obtainedTickersLength >= notInactiveSymbolsLength * minRatio, exchange.id + ' ' + 'fetchTickers' + ' must return tickers for all active markets. but returned: ' + obtainedTickersLength.toString () + ' tickers, ' + notInactiveSymbolsLength.toString () + ' active markets');
         //
